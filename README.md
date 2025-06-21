@@ -1,354 +1,238 @@
-# Clash Proxy Adapter for Web Scraping
+# CrawlAdapter
 
-A comprehensive Clash proxy client designed for web scraping applications that need to avoid IP bans through automatic proxy rotation and load balancing.
+A professional proxy management tool for web scraping and HTTP requests, featuring automatic proxy rotation, health monitoring, and Clash integration.
 
-## Features
+## Overview
 
-- **Automatic Node Fetching**: Fetches free proxy nodes from getNode project and other sources
-- **Multiple Proxy Formats**: Supports Clash and V2Ray node formats with automatic conversion
-- **Health Monitoring**: Comprehensive health checking with latency measurement and success rate tracking
-- **Load Balancing**: Multiple strategies including health-weighted, round-robin, least-used, and random selection
-- **Automatic Failover**: Intelligent proxy switching when nodes fail
-- **Easy Integration**: Simple API for integration with existing scraping frameworks
-- **Background Updates**: Automatic proxy list updates and health monitoring
-- **Configuration Management**: Template-based configuration generation with backup support
+CrawlAdapter provides a complete proxy management solution that handles the entire workflow from node fetching to intelligent proxy switching. It separates web scraping logic from proxy management, allowing developers to focus on their core scraping tasks while ensuring reliable proxy functionality.
 
-## Installation
+## Key Features
 
-### Prerequisites
+- **Complete Proxy Workflow**: Automated node fetching → health checking → config generation → Clash management → proxy switching
+- **Intelligent Health Monitoring**: Multi-URL testing with adaptive scoring and automatic failover
+- **Rule-Based Routing**: Flexible domain-based routing with DIRECT fallback for non-proxy traffic
+- **Automatic Process Management**: Clash binary detection, process lifecycle management, and cleanup
+- **Framework Agnostic**: Works with any HTTP client (aiohttp, requests, httpx, etc.)
+- **Production Ready**: PEP8 compliant, comprehensive error handling, and detailed logging
 
-1. **Clash Binary**: Install Clash or Mihomo (clash-verge-rev core)
-   - Download from [Clash releases](https://github.com/Dreamacro/clash/releases)
-   - Or [Mihomo releases](https://github.com/MetaCubeX/mihomo/releases)
-   - Or install via package manager
+## Architecture
 
-2. **Python Dependencies**:
-   ```bash
-   pip install aiohttp pyyaml psutil
-   ```
+### Core Workflow
 
-### Quick Start
+```
+1. Binary Detection → 2. Node Fetching → 3. Health Validation → 4. Config Generation
+                                                                          ↓
+8. Proxy Switching ← 7. Rule Application ← 6. Clash Restart ← 5. Process Management
+```
+
+### Component Separation
+
+- **CrawlAdapter**: Handles all proxy-related operations (nodes, health checks, Clash management, switching)
+- **Web Scrapers**: Focus solely on data extraction and parsing (e.g., PanewsLabCrawler)
+- **Clean Interface**: Simple API for proxy URL retrieval and manual switching
+
+## Quick Start
+
+### Installation
+
+#### Development Installation (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/CrawlAdapter.git
+cd CrawlAdapter
+
+# Install in development mode
+pip install -e .
+
+# Verify installation
+python -c "from crawladapter import ProxyClient; print('✅ Installation successful')"
+```
+
+#### Production Installation
+
+```bash
+# Install from local directory
+pip install .
+
+# Or with optional features
+pip install .[monitoring,examples]
+```
+
+For detailed installation instructions, see [INSTALLATION.md](INSTALLATION.md).
+
+### Basic Usage
 
 ```python
 import asyncio
-from nautilus_trader.adapters.clash import ClashProxyClient
+from crawladapter import ProxyClient
 
 async def main():
-    # Initialize client
-    client = ClashProxyClient(config_dir='./clash_configs')
-    
-    try:
-        # Start with scraping-optimized configuration
-        await client.start(config_type='scraping')
-        
-        # Get proxy URL for HTTP requests
-        proxy_url = await client.get_proxy_url()
-        print(f"Proxy URL: {proxy_url}")
-        
-        # Use with aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                'http://httpbin.org/ip',
-                proxy=proxy_url
-            ) as response:
-                data = await response.json()
-                print(f"Current IP: {data['origin']}")
-    
-    finally:
-        await client.stop()
+    # Initialize with automatic binary and config detection
+    client = ProxyClient()
 
+    # Start with custom routing rules
+    await client.start(rules=[
+        '*.panewslab.com',      # Use proxy for news sites
+        '*.httpbin.org',        # Use proxy for testing
+        # Other domains use DIRECT connection
+    ])
+
+    # Get proxy URL for requests
+    proxy_url = await client.get_proxy('https://www.panewslab.com')
+
+    # Use with any HTTP client
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, proxy=proxy_url) as response:
+            content = await response.text()
+
+    # Clean shutdown
+    await client.stop()
+
+# Run the example
 asyncio.run(main())
+```
+
+### News Crawler Integration
+
+```python
+from examples.panewslab_crawler import PanewsLabCrawler
+
+# Crawler focuses only on web scraping
+crawler = PanewsLabCrawler(
+    proxy_enabled=True,
+    proxy_rules=['*.panewslab.com', '*.httpbin.org']
+)
+
+await crawler.start()
+news_items = await crawler.fetch_newsflash(limit=10)
+await crawler.stop()
+```
+
+## Configuration
+
+### Custom Proxy Sources
+
+```python
+# Configure custom node sources
+custom_sources = {
+    'clash': [
+        'https://example.com/clash-config.yaml',
+        'https://another.com/nodes.yaml'
+    ],
+    'v2ray': [
+        'https://example.com/v2ray-subscription'
+    ]
+}
+
+from crawladapter import NodeFetcher
+client = ProxyClient()
+client.node_fetcher = NodeFetcher(custom_sources=custom_sources)
+```
+
+### Health Check Configuration
+
+```python
+# Set custom health check URLs
+health_urls = [
+    'http://httpbin.org/ip',                    # HTTP test
+    'https://www.google.com/generate_204',      # HTTPS connectivity
+    'https://detectportal.firefox.com/success.txt'  # Network detection
+]
+
+client.set_health_check_urls(health_urls)
+```
+
+### Routing Rules
+
+```python
+# Define domain-based routing rules
+rules = [
+    '*.panewslab.com',      # News sites through proxy
+    '*.coindesk.com',       # Crypto news through proxy
+    '*.httpbin.org',        # Testing endpoints through proxy
+    # All other domains use DIRECT connection automatically
+]
+
+await client.start(rules=rules)
 ```
 
 ## API Reference
 
-### ClashProxyClient
+### ProxyClient
 
-Main client class for managing Clash proxy operations.
-
-#### Constructor
+Main proxy management client.
 
 ```python
-ClashProxyClient(
+ProxyClient(
     config_dir: str = './clash_configs',
     clash_binary_path: Optional[str] = None,
-    auto_update_interval: int = 3600
+    auto_update_interval: int = 3600,
+    enable_default_rules: bool = True
 )
 ```
 
-**Parameters:**
-- `config_dir`: Directory for storing configurations
-- `clash_binary_path`: Path to Clash binary (auto-detected if None)
-- `auto_update_interval`: Interval for automatic proxy updates in seconds
+#### Core Methods
+
+- `start(rules=None, config_type='scraping')`: Start the proxy client
+- `stop()`: Stop the proxy client and cleanup
+- `get_proxy(url)`: Get proxy URL for a specific target
+- `switch_proxy(strategy='round_robin')`: Manually switch proxy
+- `get_proxy_info()`: Get current proxy information
+- `set_health_check_urls(urls)`: Set custom health check URLs
+
+### NodeFetcher
+
+Fetches proxy nodes from various sources.
 
 #### Methods
 
-##### `async start(config_type='scraping', source_types=None, enable_auto_update=True)`
+- `fetch_nodes(source_type='all')`: Fetch nodes from sources
+- `add_custom_nodes(nodes)`: Add custom proxy nodes
+- `set_custom_sources(sources)`: Set custom source URLs
 
-Start the Clash proxy client.
+### HealthChecker
 
-**Parameters:**
-- `config_type`: Configuration type ('scraping', 'speed', 'general')
-- `source_types`: List of proxy source types (['clash', 'v2ray'] or ['all'])
-- `enable_auto_update`: Enable automatic proxy list updates
+Monitors proxy health and performance.
 
-**Returns:** `bool` - True if started successfully
+#### Methods
 
-##### `async stop()`
+- `check_proxy_health(proxy_name, clash_api_base)`: Check single proxy
+- `check_all_proxies(proxies, clash_api_base)`: Check all proxies
+- `get_health_stats()`: Get health statistics
 
-Stop the client and cleanup resources.
+## Project Structure
 
-##### `async get_proxy_url(strategy='health_weighted')`
-
-Get proxy URL for HTTP clients.
-
-**Parameters:**
-- `strategy`: Selection strategy ('health_weighted', 'round_robin', 'least_used', 'random')
-
-**Returns:** `Optional[str]` - Proxy URL or None
-
-##### `async get_proxy_info()`
-
-Get current proxy information and statistics.
-
-**Returns:** `Dict` - Comprehensive proxy information
-
-##### `async switch_proxy(proxy_name=None, strategy='health_weighted')`
-
-Switch to specific proxy or select using strategy.
-
-**Parameters:**
-- `proxy_name`: Specific proxy name to switch to
-- `strategy`: Selection strategy if proxy_name is None
-
-**Returns:** `bool` - True if switch successful
-
-##### `async test_proxy(proxy_name, test_url='http://httpbin.org/ip')`
-
-Test a specific proxy.
-
-**Parameters:**
-- `proxy_name`: Name of proxy to test
-- `test_url`: URL to test with
-
-**Returns:** `Dict` - Test results with latency and IP information
-
-## Configuration Types
-
-### Scraping Configuration (Default)
-
-Optimized for web scraping with fallback and load balancing:
-
-```yaml
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies: ['auto-fallback', 'load-balance', ...]
-  - name: auto-fallback
-    type: fallback
-    proxies: [...]
-    url: 'http://www.gstatic.com/generate_204'
-    interval: 300
-    tolerance: 150
-  - name: load-balance
-    type: load-balance
-    proxies: [...]
-    strategy: round-robin
+```
+CrawlAdapter/
+├── crawladapter/           # Core proxy management package
+│   ├── core.py            # Main ProxyClient implementation
+│   ├── fetchers.py        # Node fetching and health checking
+│   └── __init__.py        # Package exports
+├── examples/              # Usage examples
+│   └── panewslab_crawler.py  # News crawler example
+├── clash_configs/         # Clash configuration directory
+├── mihomo_proxy/          # Clash binary directory
+├── requirements.txt       # Python dependencies
+└── setup.py              # Package installation
 ```
 
-### Speed Configuration
+## Examples
 
-Optimized for fastest connection:
+See the `examples/` directory for complete usage examples:
 
-```yaml
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies: ['auto-speed', ...]
-  - name: auto-speed
-    type: url-test
-    proxies: [...]
-    interval: 180
-    tolerance: 50
-```
+- `panewslab_crawler.py`: News crawler with proxy support
+- `complete_news_crawler_test.py`: Comprehensive testing example
 
-### General Configuration
+## Requirements
 
-Balanced configuration for general use:
-
-```yaml
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies: ['auto', ...]
-  - name: auto
-    type: url-test
-    proxies: [...]
-    interval: 300
-```
-
-## Load Balancing Strategies
-
-### Health Weighted
-
-Selects proxies based on health scores with higher probability for healthier proxies.
-
-```python
-proxy_url = await client.get_proxy_url(strategy='health_weighted')
-```
-
-### Round Robin
-
-Cycles through healthy proxies in order.
-
-```python
-proxy_url = await client.get_proxy_url(strategy='round_robin')
-```
-
-### Least Used
-
-Selects the proxy with the lowest usage count.
-
-```python
-proxy_url = await client.get_proxy_url(strategy='least_used')
-```
-
-### Random
-
-Randomly selects from healthy proxies.
-
-```python
-proxy_url = await client.get_proxy_url(strategy='random')
-```
-
-## Health Monitoring
-
-The client continuously monitors proxy health using multiple metrics:
-
-- **Connectivity**: Success rate across multiple test endpoints
-- **Latency**: Average response time in milliseconds
-- **Stability**: Consistency of performance over time
-- **Overall Score**: Weighted combination of all metrics
-
-Health checks run automatically every 5 minutes, and proxies are scored from 0-1.
-
-## Integration Examples
-
-### With aiohttp
-
-```python
-async with ClashProxyClient() as client:
-    proxy_url = await client.get_proxy_url()
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, proxy=proxy_url) as response:
-            data = await response.text()
-```
-
-### With requests (synchronous)
-
-```python
-# Setup
-client = ClashProxyClient()
-await client.start()
-proxy_url = await client.get_proxy_url()
-
-# Use with requests
-proxies = {'http': proxy_url, 'https': proxy_url}
-response = requests.get(url, proxies=proxies)
-
-# Cleanup
-await client.stop()
-```
-
-### With Scrapy
-
-```python
-class ProxyMiddleware:
-    def __init__(self):
-        self.client = ClashProxyClient()
-        
-    async def process_request(self, request, spider):
-        proxy_url = await self.client.get_proxy_url()
-        if proxy_url:
-            request.meta['proxy'] = proxy_url
-```
-
-## Error Handling
-
-The client provides robust error handling:
-
-```python
-try:
-    proxy_url = await client.get_proxy_url()
-    if not proxy_url:
-        # No healthy proxies available
-        await asyncio.sleep(60)  # Wait and retry
-        return
-    
-    # Make request with timeout
-    async with session.get(url, proxy=proxy_url, timeout=10) as response:
-        data = await response.text()
-        
-except asyncio.TimeoutError:
-    # Switch to different proxy on timeout
-    await client.switch_proxy(strategy='health_weighted')
-    
-except Exception as e:
-    # Log error and continue with next proxy
-    logger.error(f"Request failed: {e}")
-```
-
-## Monitoring and Statistics
-
-Get comprehensive statistics about proxy performance:
-
-```python
-info = await client.get_proxy_info()
-
-print(f"Total proxies: {info['proxy_stats']['total_proxies']}")
-print(f"Healthy proxies: {info['proxy_stats']['healthy_proxies']}")
-print(f"Health rate: {info['health_stats']['health_rate']:.2%}")
-print(f"Average score: {info['health_stats']['average_score']}")
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Clash binary not found**
-   - Install Clash or Mihomo
-   - Set `clash_binary_path` parameter
-   - Add binary to system PATH
-
-2. **No healthy proxies**
-   - Check internet connection
-   - Verify getNode sources are accessible
-   - Wait for automatic proxy updates
-
-3. **High latency**
-   - Use 'speed' configuration type
-   - Adjust health check intervals
-   - Filter proxies by region
-
-### Logging
-
-Enable debug logging for troubleshooting:
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-- PEP8 style compliance
-- English comments and documentation
-- Comprehensive test coverage
-- Example usage for new features
+- Python 3.8+
+- aiohttp
+- PyYAML
+- BeautifulSoup4
+- Clash/Mihomo binary
 
 ## License
 
-This project is part of the Nautilus Trader framework and follows the same licensing terms.
+MIT License - see LICENSE file for details.

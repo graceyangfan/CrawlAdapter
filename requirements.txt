@@ -1,14 +1,30 @@
-# Clash Proxy Adapter Requirements
-# Core dependencies for the Clash proxy client
+# CrawlAdapter - Universal Proxy Management for Web Scraping
+# Core dependencies for proxy management and web scraping
 
-# HTTP client for async requests
-aiohttp>=3.8.0
+# HTTP and networking
+aiohttp>=3.8.0           # Async HTTP client for making requests
+requests>=2.31.0         # Synchronous HTTP client for setup and utilities
+urllib3>=2.0.0           # HTTP client library
+Brotli>=1.0.9            # Brotli compression support for aiohttp
 
-# YAML parsing for configuration files
-PyYAML>=6.0
+# Configuration and data processing
+PyYAML>=6.0.0           # YAML parsing for configuration files
+beautifulsoup4>=4.12.0  # HTML parsing for node extraction
+lxml>=4.9.0             # XML/HTML parser for BeautifulSoup
 
-# Process monitoring and management
-psutil>=5.9.0
+# System and process management
+psutil>=5.9.0           # Process monitoring and management
+aiofiles>=23.1.0        # Async file operations
 
-# Optional: For synchronous HTTP requests in examples
-requests>=2.28.0
+# Utilities
+chardet>=5.0.0          # Character encoding detection
+python-dateutil>=2.8.2  # Date parsing utilities
+
+# Testing framework
+pytest>=7.0.0          # Testing framework
+pytest-asyncio>=0.21.0  # Async support for pytest
+pytest-cov>=4.1.0      # Code coverage reporting
+
+# Development tools (optional)
+structlog>=23.1.0       # Structured logging (optional)
+python-dotenv>=1.0.0    # Environment variable management (optional)
