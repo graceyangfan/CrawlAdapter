@@ -1,0 +1,241 @@
+# CrawlAdapter Default Configuration
+# This file contains all configurable parameters with their default values
+
+# Proxy Configuration
+proxy:
+  # Clash proxy port (where HTTP proxy will be available)
+  port: 7890
+  
+  # Clash API port (for management and control)
+  api_port: 9090
+  
+  # Timeout for proxy operations (seconds)
+  timeout: 30
+  
+  # Maximum number of retries for failed operations
+  max_retries: 3
+
+# Health Check Configuration
+health_check:
+  # Health check timeout (seconds)
+  timeout: 15
+  
+  # Maximum concurrent health checks
+  max_concurrent: 10
+  
+  # Minimum success rate to consider proxy healthy (0.0 - 1.0)
+  min_success_rate: 0.1
+  
+  # Number of retry attempts for health checks
+  retry_count: 3
+  
+  # URLs used for connectivity testing
+  test_urls:
+    - "http://httpbin.org/ip"
+    - "http://www.gstatic.com/generate_204"
+    - "https://www.google.com/generate_204"
+    - "https://ifconfig.co/json"
+  
+  # Adaptive health check intervals (seconds)
+  adaptive:
+    base_interval: 300      # 5 minutes
+    min_interval: 60        # 1 minute
+    max_interval: 1800      # 30 minutes
+    
+    # Interval multipliers based on proxy health state
+    multipliers:
+      excellent: 2.0        # Check less frequently for excellent proxies
+      good: 1.5
+      fair: 1.0             # Base interval
+      poor: 0.5             # Check more frequently for poor proxies
+      critical: 0.25        # Check very frequently for critical proxies
+      unknown: 0.5          # Check frequently until classified
+
+# Node Fetching Configuration
+node_fetching:
+  # Timeout for fetching node configurations (seconds)
+  timeout: 30
+  
+  # Maximum number of retries for failed fetches
+  max_retries: 3
+  
+  # Default node sources (can be overridden)
+  default_sources:
+    clash:
+      - "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml"
+    v2ray: []
+
+# Routing Rules Configuration
+routing:
+  # Enable default routing rules
+  enable_default_rules: true
+  
+  # Default rules for common scenarios
+  default_rules:
+    # News and information sites
+    - "*.panewslab.com"
+    - "*.coindesk.com"
+    - "*.cointelegraph.com"
+    
+    # Testing and development
+    - "*.httpbin.org"
+    - "*.ifconfig.co"
+    - "*.ipinfo.io"
+    
+    # Social media (commented out by default)
+    # - "*.twitter.com"
+    # - "*.facebook.com"
+    # - "*.instagram.com"
+
+# Clash Configuration Templates
+clash_templates:
+  # Configuration type: scraping (optimized for web scraping)
+  scraping:
+    mode: rule
+    log_level: warning
+    external_controller: "127.0.0.1:9090"
+    external_ui: ""
+    secret: ""
+    
+    # DNS configuration for scraping
+    dns:
+      enable: true
+      listen: "0.0.0.0:53"
+      enhanced_mode: fake-ip
+      nameserver:
+        - "8.8.8.8"
+        - "8.8.4.4"
+        - "1.1.1.1"
+      fallback:
+        - "8.8.8.8"
+        - "8.8.4.4"
+    
+    # Proxy groups for scraping
+    proxy_groups:
+      - name: "PROXY"
+        type: select
+        proxies: ["DIRECT"]  # Will be populated with actual proxies
+      
+      - name: "AUTO"
+        type: url-test
+        proxies: []  # Will be populated with actual proxies
+        url: "http://www.gstatic.com/generate_204"
+        interval: 300
+    
+    # Basic rules for scraping
+    rules:
+      - "DOMAIN-SUFFIX,local,DIRECT"
+      - "IP-CIDR,127.0.0.0/8,DIRECT"
+      - "IP-CIDR,172.16.0.0/12,DIRECT"
+      - "IP-CIDR,192.168.0.0/16,DIRECT"
+      - "IP-CIDR,10.0.0.0/8,DIRECT"
+      - "MATCH,PROXY"
+
+  # Configuration type: speed (optimized for speed)
+  speed:
+    mode: rule
+    log_level: warning
+    external_controller: "127.0.0.1:9090"
+    
+    dns:
+      enable: true
+      enhanced_mode: redir-host
+      nameserver:
+        - "1.1.1.1"
+        - "8.8.8.8"
+    
+    proxy_groups:
+      - name: "PROXY"
+        type: url-test
+        proxies: []
+        url: "http://www.gstatic.com/generate_204"
+        interval: 300
+        tolerance: 150
+    
+    rules:
+      - "DOMAIN-SUFFIX,local,DIRECT"
+      - "IP-CIDR,127.0.0.0/8,DIRECT"
+      - "IP-CIDR,172.16.0.0/12,DIRECT"
+      - "IP-CIDR,192.168.0.0/16,DIRECT"
+      - "IP-CIDR,10.0.0.0/8,DIRECT"
+      - "MATCH,PROXY"
+
+  # Configuration type: general (balanced configuration)
+  general:
+    mode: rule
+    log_level: info
+    external_controller: "127.0.0.1:9090"
+    
+    dns:
+      enable: true
+      enhanced_mode: fake-ip
+      nameserver:
+        - "8.8.8.8"
+        - "1.1.1.1"
+      fallback:
+        - "8.8.8.8"
+        - "1.1.1.1"
+    
+    proxy_groups:
+      - name: "PROXY"
+        type: select
+        proxies: ["DIRECT", "AUTO"]
+      
+      - name: "AUTO"
+        type: url-test
+        proxies: []
+        url: "http://www.gstatic.com/generate_204"
+        interval: 300
+    
+    rules:
+      - "DOMAIN-SUFFIX,local,DIRECT"
+      - "IP-CIDR,127.0.0.0/8,DIRECT"
+      - "IP-CIDR,172.16.0.0/12,DIRECT"
+      - "IP-CIDR,192.168.0.0/16,DIRECT"
+      - "IP-CIDR,10.0.0.0/8,DIRECT"
+      - "MATCH,PROXY"
+
+# Logging Configuration
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  level: "INFO"
+  
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Enable file logging
+  enable_file_logging: false
+  
+  # Log file path (if file logging is enabled)
+  log_file: "crawladapter.log"
+  
+  # Maximum log file size (MB)
+  max_file_size: 10
+  
+  # Number of backup log files to keep
+  backup_count: 5
+
+# Performance Configuration
+performance:
+  # Enable performance monitoring
+  enable_monitoring: false
+  
+  # Metrics collection interval (seconds)
+  metrics_interval: 60
+  
+  # Maximum number of metrics to keep in memory
+  max_metrics: 1000
+
+# Advanced Configuration
+advanced:
+  # Enable experimental features
+  enable_experimental: false
+  
+  # Custom user agent for HTTP requests
+  user_agent: "CrawlAdapter/1.0"
+  
+  # Connection pool size
+  connection_pool_size: 100
+  
+  # Request timeout (seconds)
+  request_timeout: 30

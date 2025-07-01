@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
-from .core import ProxyNode, ProxyStats, LoadBalanceStrategy, ConfigType, HealthCheckResult
+from .types import ProxyNode, ProxyStats, LoadBalanceStrategy, ConfigType, HealthCheckResult
 from .rules import RuleTemplates, RuleCategory
 
 

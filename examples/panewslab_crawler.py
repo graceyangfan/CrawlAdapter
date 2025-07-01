@@ -25,7 +25,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 # Import ProxyClient from CrawlAdapter (now properly installed)
-from crawladapter import ProxyClient, NodeFetcher
+from crawladapter import ProxyClient, NodeFetcher, StartupOptions
 
 
 class NewsItem:
@@ -251,15 +251,16 @@ class PanewsLabCrawler:
                 self.proxy_client = self._create_proxy_client_with_sources()
 
                 if self.proxy_client:
-                    # Apply pending health check URLs if any
-                    if self._pending_health_check_urls:
-                        self.proxy_client.set_health_check_urls(self._pending_health_check_urls)
-                        self.logger.info(f"Applied {len(self._pending_health_check_urls)} pending health check URLs")
-                        self._pending_health_check_urls = None
-
-                    # Start proxy client
+                    # Start proxy client with new API
                     try:
-                        success = await self.proxy_client.start(rules=self.proxy_rules)
+                        # Create startup options
+                        startup_options = StartupOptions(
+                            config_type='scraping',
+                            rules=self.proxy_rules,
+                            enable_auto_update=True
+                        )
+
+                        success = await self.proxy_client.start(startup_options)
                         if success:
                             self.logger.info("✅ Proxy client started")
                         else:
@@ -308,16 +309,15 @@ class PanewsLabCrawler:
         """
         Set custom health check URLs.
 
+        Note: Health check URLs are now configured through the configuration system.
+        This method is kept for backward compatibility but has no effect.
+
         Args:
             urls: List of URLs to use for health checking
         """
-        if self.proxy_client:
-            self.proxy_client.set_health_check_urls(urls)
-            self.logger.info(f"Updated health check URLs: {len(urls)} URLs")
-        else:
-            # Store for later use when proxy client is created
-            self._pending_health_check_urls = urls
-            self.logger.info(f"Stored health check URLs for later use: {len(urls)} URLs")
+        self.logger.info(f"Health check URLs are now configured through the configuration system")
+        self.logger.info(f"Provided URLs: {urls}")
+        # Health check configuration is now handled by the configuration system
 
     async def get_proxy_status(self) -> dict:
         """Get detailed proxy status information."""
@@ -339,7 +339,7 @@ class PanewsLabCrawler:
             proxy_info = await self.proxy_client.get_proxy_info()
 
             # Get current proxy URL
-            current_proxy = await self.proxy_client.get_proxy_url()
+            current_proxy = self.proxy_client.config.proxy_url
 
             # Check current IP
             current_ip = await self._check_current_ip(current_proxy)
@@ -372,7 +372,7 @@ class PanewsLabCrawler:
             self.logger.info(f"🔄 Switching proxy using strategy: {strategy}")
 
             # Get current state before switch
-            old_proxy = await self.proxy_client.get_proxy_url()
+            old_proxy = self.proxy_client.config.proxy_url
             old_ip = await self._check_current_ip(old_proxy)
 
             # Switch proxy
@@ -383,7 +383,7 @@ class PanewsLabCrawler:
                 await asyncio.sleep(2)
 
                 # Get new state after switch
-                new_proxy = await self.proxy_client.get_proxy_url()
+                new_proxy = self.proxy_client.config.proxy_url
                 new_ip = await self._check_current_ip(new_proxy)
 
                 # Compare states

@@ -17,25 +17,38 @@ Usage example:
     # Use proxy_url for HTTP requests
 """
 
-# Import core functionality
-from .core import (
-    ProxyClient,
+# Import core functionality from new modular structure
+from .client import ProxyClient
+from .simple_client import SimpleProxyClient, create_simple_client, get_proxy_for_url
+from .config_loader import load_config, create_proxy_config, get_config_loader
+from .types import (
     ProxyNode,
     HealthCheckResult,
     ProxyStats,
+    ProxyConfig,
+    StartupOptions,
     ProxyType,
     LoadBalanceStrategy,
     ConfigType,
+    ProxyDict,
+    HealthResults,
+    ProxyList,
+    RuleList
+)
+from .exceptions import (
     CrawlAdapterError,
     ProxyNotAvailableError,
     ConfigurationError,
     HealthCheckError,
     NodeFetchError,
-    RuleError
+    RuleError,
+    ClashProcessError,
+    ProxyConnectionError
 )
 
-# Import node fetcher and health checker
-from .fetchers import NodeFetcher, HealthChecker
+# Import node fetcher and health monitor
+from .fetchers import NodeFetcher
+from .health_checker import HealthChecker
 
 # Import managers (backward compatibility)
 try:
@@ -60,6 +73,7 @@ __license__ = "MIT"
 __all__ = [
     # Core classes
     'ProxyClient',
+    'SimpleProxyClient',
     'NodeFetcher',
     'HealthChecker',
 
@@ -67,6 +81,8 @@ __all__ = [
     'ProxyNode',
     'HealthCheckResult',
     'ProxyStats',
+    'ProxyConfig',
+    'StartupOptions',
 
     # Enums
     'ProxyType',
@@ -80,6 +96,21 @@ __all__ = [
     'HealthCheckError',
     'NodeFetchError',
     'RuleError',
+    'ClashProcessError',
+    'ProxyConnectionError',
+
+    # Type aliases
+    'ProxyDict',
+    'HealthResults',
+    'ProxyList',
+    'RuleList',
+
+    # Convenience functions
+    'create_simple_client',
+    'get_proxy_for_url',
+    'load_config',
+    'create_proxy_config',
+    'get_config_loader',
 
     # Managers (backward compatibility)
     'ConfigurationManager',
