@@ -49,9 +49,10 @@ class HealthCheckConfig:
     test_urls: List[str] = field(default_factory=lambda: [
         'http://httpbin.org/ip',
         'http://www.gstatic.com/generate_204',
-        'https://www.google.com/generate_204'
+        'https://api.ipify.org',
+        'http://icanhazip.com'
     ])
-    min_success_rate: float = 0.1
+    min_success_rate: float = 0.25  # 提高到25%，更合理的标准
     retry_count: int = 3
 
     @classmethod
@@ -65,9 +66,10 @@ class HealthCheckConfig:
             test_urls=health_config.get('test_urls', [
                 'http://httpbin.org/ip',
                 'http://www.gstatic.com/generate_204',
-                'https://www.google.com/generate_204'
+                'https://api.ipify.org',
+                'http://icanhazip.com'
             ]),
-            min_success_rate=health_config.get('min_success_rate', 0.1),
+            min_success_rate=health_config.get('min_success_rate', 0.25),
             retry_count=health_config.get('retry_count', 3)
         )
 
@@ -97,43 +99,83 @@ class BaseHealthChecker:
             switch_url = f"{clash_api_base}/proxies/PROXY"
             switch_data = {"name": proxy_name}
             
+            # First, switch proxy using a separate session
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self.config.timeout)
-            ) as session:
+            ) as control_session:
                 # Switch proxy
-                async with session.put(switch_url, json=switch_data) as response:
+                async with control_session.put(switch_url, json=switch_data) as response:
                     if response.status != 204:
                         return HealthCheckResult(
                             proxy_name=proxy_name,
                             success=False,
                             error="Failed to switch proxy"
                         )
-                
-                # Test connectivity with multiple URLs
+
+            # Wait for proxy switch to take effect
+            await asyncio.sleep(1)
+
+            # Now test connectivity through the proxy
+            # Extract proxy port from clash_api_base (assuming format like http://127.0.0.1:9090)
+            proxy_port = 7890  # Default proxy port
+            try:
+                # Try to extract port from API base, proxy port is usually API port - 1200
+                api_parts = clash_api_base.split(':')
+                if len(api_parts) >= 3:
+                    api_port = int(api_parts[2])
+                    proxy_port = api_port - 1200  # Common pattern: API 9090, Proxy 7890
+            except:
+                pass
+
+            proxy_url = f"http://127.0.0.1:{proxy_port}"
+
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout)
+            ) as test_session:
+                # Test connectivity with multiple URLs through proxy
                 success_count = 0
                 total_tests = len(self.config.test_urls)
-                
+                error_details = []
+
                 for test_url in self.config.test_urls:
                     try:
-                        async with session.get(test_url, timeout=aiohttp.ClientTimeout(total=10)) as test_response:
-                            if test_response.status == 200:
+                        async with test_session.get(
+                            test_url,
+                            proxy=proxy_url,  # 关键修复：使用代理
+                            timeout=aiohttp.ClientTimeout(total=10)
+                        ) as test_response:
+                            if test_response.status in [200, 204]:  # Accept both 200 and 204
                                 success_count += 1
-                    except Exception:
-                        # Individual test failure is expected
-                        pass
+                                self.logger.debug(f"✅ {proxy_name}: {test_url} - HTTP {test_response.status}")
+                            else:
+                                error_details.append(f"{test_url}: HTTP {test_response.status}")
+                                self.logger.debug(f"⚠️ {proxy_name}: {test_url} - HTTP {test_response.status}")
+                    except asyncio.TimeoutError:
+                        error_details.append(f"{test_url}: timeout")
+                        self.logger.debug(f"⏰ {proxy_name}: {test_url} - timeout")
+                    except Exception as e:
+                        error_details.append(f"{test_url}: {type(e).__name__}")
+                        self.logger.debug(f"❌ {proxy_name}: {test_url} - {type(e).__name__}")
+
+                # 计算成功率
+                success_rate = success_count / total_tests if total_tests > 0 else 0
+
+                # 如果没有任何URL成功，但至少有一个返回了HTTP响应，给予部分分数
+                if success_count == 0 and any("HTTP" in detail for detail in error_details):
+                    success_rate = max(success_rate, 0.1)  # 最低给予10%分数
                 
                 end_time = time.time()
                 latency = (end_time - start_time) * 1000  # Convert to ms
-                success_rate = success_count / total_tests if total_tests > 0 else 0
                 is_healthy = success_rate >= self.config.min_success_rate
-                
+
                 return HealthCheckResult(
                     proxy_name=proxy_name,
                     success=is_healthy,
                     latency=latency,
                     connectivity=success_rate,
                     success_rate=success_rate,
-                    overall_score=success_rate if is_healthy else 0.0
+                    overall_score=success_rate if is_healthy else 0.0,
+                    error="; ".join(error_details) if error_details and not is_healthy else None
                 )
         
         except Exception as e:

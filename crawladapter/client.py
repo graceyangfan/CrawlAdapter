@@ -143,27 +143,52 @@ class ProxyClient:
             if not await self._fetch_proxy_nodes(options.source_types or ['all']):
                 self.logger.error("Failed to fetch proxy nodes")
                 return False
-            
-            # Step 4: Health check
+
+            # Step 4: Generate initial configuration with all nodes
+            self.logger.info("Generating initial configuration with all nodes...")
+            initial_config_dict = self.config_manager.generate_clash_config(
+                [node.to_dict() for node in self.active_proxies],
+                options.config_type,
+                include_health_check_rules=True  # 确保健康检查URL在代理规则中
+            )
+            initial_config_path = self.config_manager.save_configuration(initial_config_dict)
+
+            # Step 5: Start Clash process for health checking
+            self.logger.info("Starting Clash for health checking...")
+            if not await self.process_manager.start_clash_process(str(initial_config_path)):
+                self.logger.error("Failed to start Clash process for health checking")
+                return False
+
+            # Wait for Clash to be ready
+            await asyncio.sleep(3)
+
+            # Step 6: Perform health check (now Clash is running)
+            self.logger.info("Performing health check on all nodes...")
             healthy_nodes = await self._health_check_nodes()
             if not healthy_nodes:
                 self.logger.warning("No healthy nodes found, using all nodes")
                 healthy_nodes = self.active_proxies
-            
-            # Step 5: Generate and save configuration
-            config_dict = self.config_manager.generate_clash_config(
+            else:
+                self.logger.info(f"Health check completed: {len(healthy_nodes)}/{len(self.active_proxies)} nodes healthy")
+
+            # Step 7: Generate final configuration with healthy nodes only
+            self.logger.info("Generating final configuration with healthy nodes...")
+            final_config_dict = self.config_manager.generate_clash_config(
                 [node.to_dict() for node in healthy_nodes],
                 options.config_type
             )
-            config_path = self.config_manager.save_configuration(config_dict)
-            
-            # Step 6: Start Clash process (convert Path to string)
-            if not await self.process_manager.start_clash_process(str(config_path)):
-                self.logger.error("Failed to start Clash process")
+            final_config_path = self.config_manager.save_configuration(final_config_dict)
+
+            # Step 8: Restart Clash with healthy nodes configuration
+            self.logger.info("Restarting Clash with healthy nodes...")
+            await self.process_manager.stop_clash_process()
+            await asyncio.sleep(2)
+            if not await self.process_manager.start_clash_process(str(final_config_path)):
+                self.logger.error("Failed to restart Clash process with healthy nodes")
                 return False
-            
-            # Step 7: Initialize proxy manager
-            self.proxy_manager.update_proxies(healthy_nodes)
+
+            # Step 9: Initialize proxy manager
+            self.proxy_manager.update_proxies(proxy_nodes=healthy_nodes)
             
             # Step 8: Start background tasks
             if options.enable_auto_update:

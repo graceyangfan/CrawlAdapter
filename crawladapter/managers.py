@@ -50,13 +50,14 @@ class ConfigurationManager:
         # Health check test URLs - 可以由用户自定义
         self.health_check_urls: List[str] = []
 
-    def generate_clash_config(self, proxies: List[Dict], config_type: str = 'scraping') -> Dict:
+    def generate_clash_config(self, proxies: List[Dict], config_type: str = 'scraping', include_health_check_rules: bool = False) -> Dict:
         """
         Generate Clash configuration with proxies and rules.
 
         Args:
             proxies: List of proxy configurations
             config_type: Type of configuration ('scraping', 'speed', 'general')
+            include_health_check_rules: Whether to include health check URLs in proxy rules
 
         Returns:
             Complete Clash configuration dictionary
@@ -65,15 +66,15 @@ class ConfigurationManager:
             raise ValueError("No proxies provided for configuration generation")
 
         proxy_names = [proxy['name'] for proxy in proxies]
-        
-        if config_type == 'scraping':
-            return self._get_scraping_config(proxy_names, proxies)
-        elif config_type == 'speed':
-            return self._get_speed_config(proxy_names, proxies)
-        else:
-            return self._get_general_config(proxy_names, proxies)
 
-    def _get_scraping_config(self, proxy_names: List[str], proxies: List[Dict]) -> Dict:
+        if config_type == 'scraping':
+            return self._get_scraping_config(proxy_names, proxies, include_health_check_rules)
+        elif config_type == 'speed':
+            return self._get_speed_config(proxy_names, proxies, include_health_check_rules)
+        else:
+            return self._get_general_config(proxy_names, proxies, include_health_check_rules)
+
+    def _get_scraping_config(self, proxy_names: List[str], proxies: List[Dict], include_health_check_rules: bool = False) -> Dict:
         """Generate configuration optimized for web scraping."""
         return {
             'mixed-port': 7890,
@@ -108,11 +109,12 @@ class ConfigurationManager:
             ],
             'rules': self._build_rules_with_health_check(
                 categories=self.rule_categories,
-                default_action='PROXY'
+                default_action='PROXY',
+                include_health_check_rules=include_health_check_rules
             )
         }
 
-    def _get_speed_config(self, proxy_names: List[str], proxies: List[Dict]) -> Dict:
+    def _get_speed_config(self, proxy_names: List[str], proxies: List[Dict], include_health_check_rules: bool = False) -> Dict:
         """Generate configuration optimized for speed."""
         return {
             'mixed-port': 7890,
@@ -140,7 +142,7 @@ class ConfigurationManager:
             'rules': RuleTemplates.get_minimal_rules()
         }
 
-    def _get_general_config(self, proxy_names: List[str], proxies: List[Dict]) -> Dict:
+    def _get_general_config(self, proxy_names: List[str], proxies: List[Dict], include_health_check_rules: bool = False) -> Dict:
         """Generate general-purpose configuration."""
         return {
             'mixed-port': 7890,
@@ -260,14 +262,26 @@ class ConfigurationManager:
 
         return list(domains)
 
+    def _extract_domain_from_url(self, url: str) -> Optional[str]:
+        """Extract domain from a single URL."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            return parsed.netloc
+        except Exception as e:
+            self.logger.warning(f"Failed to parse URL {url}: {e}")
+            return None
+
     def _build_rules_with_health_check(self, categories: List[RuleCategory],
-                                     default_action: str = 'DIRECT') -> List[str]:
+                                     default_action: str = 'DIRECT',
+                                     include_health_check_rules: bool = False) -> List[str]:
         """
         Build rules including health check URL rules.
 
         Args:
             categories: Rule categories to include
             default_action: Default action for unmatched traffic
+            include_health_check_rules: Whether to include health check URLs in proxy rules
 
         Returns:
             Complete list of rules with health check URLs prioritized
@@ -275,10 +289,21 @@ class ConfigurationManager:
         rules = []
 
         # 1. 首先添加健康检查URL规则（最高优先级）
-        if self.health_check_urls:
+        if include_health_check_rules:
+            # 添加健康检查URL规则（不添加注释，因为Clash不支持规则中的注释）
+            health_check_urls = [
+                'http://httpbin.org/ip',
+                'http://www.gstatic.com/generate_204',
+                'https://api.ipify.org',
+                'http://icanhazip.com'
+            ]
+            for url in health_check_urls:
+                domain = self._extract_domain_from_url(url)
+                if domain:
+                    rules.append(f'DOMAIN-SUFFIX,{domain},PROXY')
+        elif self.health_check_urls:
             health_check_rules = self._extract_domains_from_urls(self.health_check_urls)
             if health_check_rules:
-                rules.append('# Health check URLs - 健康检查网址通过代理')
                 rules.extend(health_check_rules)
 
         # 2. 添加分类规则
@@ -515,19 +540,47 @@ class ProxyManager:
                                  if p.last_checked], default=0)
         )
 
-    async def update_proxies(self) -> bool:
-        """Update proxy list by fetching new nodes."""
+    def update_proxies(self, proxy_nodes: Optional[List[ProxyNode]] = None) -> bool:
+        """
+        Update proxy list with provided nodes or fetch new ones.
+
+        Args:
+            proxy_nodes: List of proxy nodes to update with. If None, fetch new nodes.
+
+        Returns:
+            True if update was successful
+        """
+        try:
+            old_count = len(self.active_proxies)
+
+            if proxy_nodes is not None:
+                # Use provided proxy nodes
+                self.active_proxies = proxy_nodes.copy()
+                new_count = len(self.active_proxies)
+                self.logger.info(f"Updated proxies with provided nodes: {old_count} -> {new_count}")
+                return True
+            else:
+                # Fetch new nodes (async operation - should be called differently)
+                self.logger.warning("update_proxies called without nodes - use fetch_and_update_proxies for fetching")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to update proxies: {e}")
+            return False
+
+    async def fetch_and_update_proxies(self) -> bool:
+        """Fetch new nodes and update proxy list."""
         try:
             from .fetchers import NodeFetcher
-            
+
             node_fetcher = NodeFetcher()
             new_nodes = await node_fetcher.fetch_nodes('all')
-            
+
             if new_nodes:
                 # Update active proxies
                 old_count = len(self.active_proxies)
                 self.active_proxies = []
-                
+
                 for node_dict in new_nodes:
                     try:
                         proxy_node = ProxyNode(
@@ -540,13 +593,13 @@ class ProxyManager:
                         self.active_proxies.append(proxy_node)
                     except Exception as e:
                         self.logger.debug(f"Failed to create proxy node: {e}")
-                
+
                 new_count = len(self.active_proxies)
-                self.logger.info(f"Updated proxies: {old_count} -> {new_count}")
+                self.logger.info(f"Fetched and updated proxies: {old_count} -> {new_count}")
                 return True
-            
+
             return False
-            
+
         except Exception as e:
-            self.logger.error(f"Failed to update proxies: {e}")
+            self.logger.error(f"Failed to fetch and update proxies: {e}")
             return False

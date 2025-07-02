@@ -54,14 +54,14 @@ class NewsItem:
         """Parse publish_time to Unix timestamp."""
         try:
             if isinstance(self.publish_time, str):
-                # Handle relative times like "5分钟前", "1小时前"
-                if "分钟前" in self.publish_time:
+                # Handle relative times like "5 minutes ago", "1 hour ago"
+                if "分钟前" in self.publish_time or "minutes ago" in self.publish_time:
                     minutes = int(re.search(r'(\d+)', self.publish_time).group(1))
                     dt = datetime.now() - timedelta(minutes=minutes)
-                elif "小时前" in self.publish_time:
+                elif "小时前" in self.publish_time or "hours ago" in self.publish_time:
                     hours = int(re.search(r'(\d+)', self.publish_time).group(1))
                     dt = datetime.now() - timedelta(hours=hours)
-                elif "天前" in self.publish_time:
+                elif "天前" in self.publish_time or "days ago" in self.publish_time:
                     days = int(re.search(r'(\d+)', self.publish_time).group(1))
                     dt = datetime.now() - timedelta(days=days)
                 else:
@@ -162,12 +162,12 @@ class PanewsLabCrawler:
             'USDT', 'USDC', 'BUSD', 'DAI', 'WBTC', 'AAVE', 'MKR',
             'COMP', 'YFI', 'SUSHI', 'CRV', 'SNX', 'BAL', 'REN'
         ]
-        
+
         # Request headers
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
@@ -566,7 +566,7 @@ class PanewsLabCrawler:
                 return None
 
             # Extract content/description
-            content = item.get('desc', '').replace('\r\n原文链接', '').replace('\\r\\n', '\n')
+            content = item.get('desc', '').replace('\r\nOriginal link', '').replace('\\r\\n', '\n')
 
             # Extract publish time
             publish_time_timestamp = item.get('publishTime', 0)
@@ -789,7 +789,8 @@ class PanewsLabCrawler:
         # Look for time patterns in text
         text = element.get_text()
         time_patterns = [
-            r'\d+分钟前', r'\d+小时前', r'\d+天前',
+            r'\d+分钟前', r'\d+小时前', r'\d+天前',  # Chinese patterns
+            r'\d+ minutes ago', r'\d+ hours ago', r'\d+ days ago',  # English patterns
             r'\d{4}-\d{2}-\d{2}', r'\d{2}:\d{2}'
         ]
 

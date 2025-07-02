@@ -1,18 +1,18 @@
 """
-改进的完整新闻爬虫测试
-支持两种模式：
-1. 使用现有配置文件 (config_path)
-2. 通过custom_sources自动获取节点
+Improved Complete News Crawler Test
+Supports two modes:
+1. Use existing configuration file (config_path)
+2. Automatically fetch nodes through custom_sources
 
-实现完整流程：
-1. 节点获取 (支持custom_sources参数)
-2. 健康检查并写入rule保存到config
-3. 启动clash开始健康检查
-4. 将不健康节点排除（保存健康节点在内存或重新写入config.yaml）
-5. 重新启动clash
-6. 开始自动节点切换或强制切换
-7. 爬虫测试验证
-8. 验证其他网址不走代理
+Implements complete workflow:
+1. Node fetching (supports custom_sources parameter)
+2. Health check and write rules to config
+3. Start clash for health checking
+4. Exclude unhealthy nodes (save healthy nodes in memory or rewrite config.yaml)
+5. Restart clash
+6. Begin automatic node switching or forced switching
+7. Crawler test verification
+8. Verify other URLs don't use proxy
 """
 
 import asyncio
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from urllib.parse import urlparse
 
-# 添加项目根目录到路径
+# Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -35,29 +35,29 @@ from crawladapter.fetchers import NodeFetcher
 
 
 class ImprovedCompleteNewsTest:
-    """改进的完整新闻爬虫测试"""
+    """Improved complete news crawler test"""
 
     def __init__(self,
                  config_path: Optional[str] = None,
                  custom_sources: Optional[Dict[str, List[str]]] = None,
                  min_healthy_nodes: int = 3):
         """
-        初始化测试
+        Initialize test
 
         Args:
-            config_path: 现有配置文件路径（可选）
-            custom_sources: 自定义节点源（可选）
-            min_healthy_nodes: 最少健康节点数量
+            config_path: Existing configuration file path (optional)
+            custom_sources: Custom node sources (optional)
+            min_healthy_nodes: Minimum number of healthy nodes
         """
         self.logger = logging.getLogger(__name__)
         self.setup_logging()
 
-        # 路径配置
+        # Path configuration
         self.project_root = Path(__file__).parent.parent
         self.config_dir = self.project_root / 'clash_configs'
         self.config_dir.mkdir(exist_ok=True)
 
-        # 配置文件路径
+        # Configuration file path
         if config_path:
             self.config_path = Path(config_path)
         else:
@@ -65,7 +65,7 @@ class ImprovedCompleteNewsTest:
 
         self.binary_path = self.project_root / 'mihomo_proxy' / 'mihomo'
 
-        # 自定义源配置
+        # Custom source configuration
         self.custom_sources = custom_sources or {
             'clash': [
                 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml',
@@ -74,15 +74,15 @@ class ImprovedCompleteNewsTest:
             'v2ray': []
         }
 
-        # 网络配置
+        # Network configuration
         self.proxy_port = 7890
         self.api_port = 9090
         self.clash_api_base = f"http://127.0.0.1:{self.api_port}"
 
-        # 测试配置
+        # Test configuration
         self.min_healthy_nodes = min_healthy_nodes
 
-        # 代理相关URL（需要走代理）
+        # Proxy-related URLs (need to use proxy)
         self.proxy_urls = [
             'httpbin.org',
             'www.gstatic.com',
@@ -92,7 +92,7 @@ class ImprovedCompleteNewsTest:
             'www.panewslab.com'
         ]
 
-        # 直连URL（不走代理）
+        # Direct connection URLs (don't use proxy)
         self.direct_urls = [
             'baidu.com',
             'qq.com',
@@ -100,13 +100,13 @@ class ImprovedCompleteNewsTest:
             'jd.com'
         ]
 
-        # 状态变量
+        # State variables
         self.clash_process: Optional[subprocess.Popen] = None
         self.all_nodes: List[Dict] = []
         self.healthy_nodes: List[Dict] = []
 
     def setup_logging(self):
-        """设置日志"""
+        """Setup logging"""
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -117,13 +117,13 @@ class ImprovedCompleteNewsTest:
         )
 
     async def step1_fetch_nodes(self) -> bool:
-        """步骤1: 节点获取（支持两种模式）"""
-        self.logger.info("🚀 步骤1: 节点获取")
+        """Step 1: Node fetching (supports two modes)"""
+        self.logger.info("🚀 Step 1: Node fetching")
 
         try:
-            # 模式1: 如果有现有配置文件，尝试读取
+            # Mode 1: If existing configuration file exists, try to read it
             if self.config_path.exists() and self.config_path.name != 'auto_generated_config.yaml':
-                self.logger.info(f"📁 模式1: 从现有配置文件读取节点: {self.config_path}")
+                self.logger.info(f"📁 Mode 1: Reading nodes from existing config file: {self.config_path}")
 
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     existing_config = yaml.safe_load(f)
@@ -131,63 +131,63 @@ class ImprovedCompleteNewsTest:
                 self.all_nodes = existing_config.get('proxies', [])
 
                 if self.all_nodes:
-                    self.logger.info(f"✅ 从配置文件读取 {len(self.all_nodes)} 个节点")
+                    self.logger.info(f"✅ Read {len(self.all_nodes)} nodes from config file")
                     return True
                 else:
-                    self.logger.warning("⚠️ 配置文件中没有代理节点，切换到自动获取模式")
+                    self.logger.warning("⚠️ No proxy nodes in config file, switching to auto-fetch mode")
 
-            # 模式2: 通过custom_sources自动获取节点
-            self.logger.info("📥 模式2: 通过custom_sources自动获取节点")
-            self.logger.info(f"   节点源: {list(self.custom_sources.keys())}")
+            # Mode 2: Automatically fetch nodes through custom_sources
+            self.logger.info("📥 Mode 2: Auto-fetching nodes through custom_sources")
+            self.logger.info(f"   Node sources: {list(self.custom_sources.keys())}")
 
             node_fetcher = NodeFetcher(custom_sources=self.custom_sources)
             self.all_nodes = await node_fetcher.fetch_nodes('all')
 
             if not self.all_nodes:
-                self.logger.error("❌ 未获取到任何节点")
+                self.logger.error("❌ No nodes fetched")
                 return False
 
-            self.logger.info(f"✅ 自动获取 {len(self.all_nodes)} 个节点")
+            self.logger.info(f"✅ Auto-fetched {len(self.all_nodes)} nodes")
 
-            # 显示节点类型统计
+            # Display node type statistics
             node_types = {}
             for node in self.all_nodes:
                 node_type = node.get('type', 'unknown')
                 node_types[node_type] = node_types.get(node_type, 0) + 1
 
-            self.logger.info(f"   节点类型分布: {node_types}")
+            self.logger.info(f"   Node type distribution: {node_types}")
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤1失败: {e}")
+            self.logger.error(f"❌ Step 1 failed: {e}")
             return False
 
     async def step2_create_initial_config(self) -> bool:
-        """步骤2: 创建初始配置并写入rule"""
-        self.logger.info("⚙️ 步骤2: 创建初始配置")
+        """Step 2: Create initial configuration and write rules"""
+        self.logger.info("⚙️ Step 2: Create initial configuration")
 
         try:
-            # 生成包含所有节点的配置
+            # Generate configuration containing all nodes
             config = self._generate_smart_config(self.all_nodes)
 
-            # 保存配置
+            # Save configuration
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True, indent=2)
 
-            self.logger.info(f"✅ 初始配置已保存: {self.config_path}")
-            self.logger.info(f"   包含 {len(self.all_nodes)} 个代理节点")
-            self.logger.info(f"   代理规则: {len(self.proxy_urls)} 个域名")
-            self.logger.info(f"   直连规则: {len(self.direct_urls)} 个域名")
+            self.logger.info(f"✅ Initial configuration saved: {self.config_path}")
+            self.logger.info(f"   Contains {len(self.all_nodes)} proxy nodes")
+            self.logger.info(f"   Proxy rules: {len(self.proxy_urls)} domains")
+            self.logger.info(f"   Direct rules: {len(self.direct_urls)} domains")
 
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤2失败: {e}")
+            self.logger.error(f"❌ Step 2 failed: {e}")
             return False
 
     def _generate_smart_config(self, nodes: List[Dict]) -> Dict:
-        """生成智能路由配置"""
-        # 确保节点名称唯一
+        """Generate smart routing configuration"""
+        # Ensure unique node names
         unique_nodes = []
         used_names = set()
 
@@ -236,7 +236,7 @@ class ImprovedCompleteNewsTest:
             'proxy-groups': [
                 {
                     'name': 'PROXY',
-                    'type': 'select',  # 使用select类型，更稳定
+                    'type': 'select',  # Use select type, more stable
                     'proxies': ['DIRECT'] + [node['name'] for node in unique_nodes]
                 },
                 {
@@ -254,8 +254,8 @@ class ImprovedCompleteNewsTest:
         return config
 
     def _generate_final_config_with_rules(self, nodes: List[Dict]) -> Dict:
-        """生成最终配置（健康节点+新闻网络规则）"""
-        # 确保节点名称唯一
+        """Generate final configuration (healthy nodes + news network rules)"""
+        # Ensure unique node names
         unique_nodes = []
         used_names = set()
 
@@ -315,10 +315,10 @@ class ImprovedCompleteNewsTest:
         return config
 
     def _generate_smart_rules(self) -> List[str]:
-        """生成智能路由规则 - 修复版本"""
+        """Generate smart routing rules - fixed version"""
         rules = []
 
-        # 1. 本地网络直连（优先级最高）
+        # 1. Local network direct connection (highest priority)
         rules.extend([
             'IP-CIDR,127.0.0.0/8,DIRECT',
             'IP-CIDR,172.16.0.0/12,DIRECT',
@@ -328,7 +328,7 @@ class ImprovedCompleteNewsTest:
             'DOMAIN-SUFFIX,local,DIRECT'
         ])
 
-        # 2. 健康检查和测试URL走代理（确保健康检查正常工作）
+        # 2. Health check and test URLs use proxy (ensure health checks work properly)
         proxy_domains = [
             'httpbin.org',
             'www.gstatic.com',
@@ -343,7 +343,7 @@ class ImprovedCompleteNewsTest:
         for domain in proxy_domains:
             rules.append(f'DOMAIN-SUFFIX,{domain},PROXY')
 
-        # 3. 新闻爬虫目标网站走代理
+        # 3. News crawler target websites use proxy
         news_domains = [
             'panewslab.com',
             'www.panewslab.com'
@@ -352,7 +352,7 @@ class ImprovedCompleteNewsTest:
         for domain in news_domains:
             rules.append(f'DOMAIN-SUFFIX,{domain},PROXY')
 
-        # 4. 国内网站直连
+        # 4. Domestic websites direct connection
         direct_domains = [
             'baidu.com',
             'qq.com',
@@ -368,19 +368,19 @@ class ImprovedCompleteNewsTest:
         for domain in direct_domains:
             rules.append(f'DOMAIN-SUFFIX,{domain},DIRECT')
 
-        # 5. 中国IP直连
+        # 5. China IP direct connection
         rules.append('GEOIP,CN,DIRECT')
 
-        # 6. 默认规则（其他所有流量直连）
+        # 6. Default rule (all other traffic direct)
         rules.append('MATCH,DIRECT')
 
         return rules
 
     def _generate_news_crawling_rules(self) -> List[str]:
-        """生成新闻爬取专用规则"""
+        """Generate news crawling specific rules"""
         rules = []
 
-        # 1. 本地网络直连（优先级最高）
+        # 1. Local network direct connection (highest priority)
         rules.extend([
             'IP-CIDR,127.0.0.0/8,DIRECT',
             'IP-CIDR,172.16.0.0/12,DIRECT',
@@ -389,20 +389,20 @@ class ImprovedCompleteNewsTest:
             'DOMAIN-SUFFIX,local,DIRECT'
         ])
 
-        # 2. 新闻网站必须走代理
+        # 2. News websites must use proxy
         rules.extend([
             'DOMAIN-SUFFIX,panewslab.com,PROXY',
             'DOMAIN-SUFFIX,www.panewslab.com,PROXY'
         ])
 
-        # 3. 测试和健康检查URL走代理
+        # 3. Test and health check URLs use proxy
         rules.extend([
             'DOMAIN-SUFFIX,httpbin.org,PROXY',
             'DOMAIN-SUFFIX,www.gstatic.com,PROXY',
             'DOMAIN-SUFFIX,gstatic.com,PROXY'
         ])
 
-        # 4. 国内网站直连
+        # 4. Domestic websites direct connection
         rules.extend([
             'DOMAIN-SUFFIX,baidu.com,DIRECT',
             'DOMAIN-SUFFIX,qq.com,DIRECT',
@@ -410,93 +410,51 @@ class ImprovedCompleteNewsTest:
             'DOMAIN-SUFFIX,jd.com,DIRECT'
         ])
 
-        # 5. 中国IP直连
+        # 5. China IP direct connection
         rules.append('GEOIP,CN,DIRECT')
 
-        # 6. 默认规则（其他流量直连）
-        rules.append('MATCH,DIRECT')
-
-        return rules
-
-    def _generate_news_crawling_rules(self) -> List[str]:
-        """生成新闻爬取专用规则"""
-        rules = []
-
-        # 1. 本地网络直连（优先级最高）
-        rules.extend([
-            'IP-CIDR,127.0.0.0/8,DIRECT',
-            'IP-CIDR,172.16.0.0/12,DIRECT',
-            'IP-CIDR,192.168.0.0/16,DIRECT',
-            'IP-CIDR,10.0.0.0/8,DIRECT',
-            'DOMAIN-SUFFIX,local,DIRECT'
-        ])
-
-        # 2. 新闻网站必须走代理
-        rules.extend([
-            'DOMAIN-SUFFIX,panewslab.com,PROXY',
-            'DOMAIN-SUFFIX,www.panewslab.com,PROXY'
-        ])
-
-        # 3. 测试和健康检查URL走代理
-        rules.extend([
-            'DOMAIN-SUFFIX,httpbin.org,PROXY',
-            'DOMAIN-SUFFIX,www.gstatic.com,PROXY',
-            'DOMAIN-SUFFIX,gstatic.com,PROXY'
-        ])
-
-        # 4. 国内网站直连
-        rules.extend([
-            'DOMAIN-SUFFIX,baidu.com,DIRECT',
-            'DOMAIN-SUFFIX,qq.com,DIRECT',
-            'DOMAIN-SUFFIX,taobao.com,DIRECT',
-            'DOMAIN-SUFFIX,jd.com,DIRECT'
-        ])
-
-        # 5. 中国IP直连
-        rules.append('GEOIP,CN,DIRECT')
-
-        # 6. 默认规则（其他流量直连）
+        # 6. Default rule (other traffic direct)
         rules.append('MATCH,DIRECT')
 
         return rules
 
     async def step3_test_nodes_health(self) -> bool:
-        """步骤3: 测试节点健康状况（不启动Clash）"""
-        self.logger.info("🏥 步骤3: 测试节点健康状况")
+        """Step 3: Test node health status (without starting Clash)"""
+        self.logger.info("🏥 Step 3: Test node health status")
 
         try:
-            # 3.1 直接测试节点连通性（不依赖Clash）
-            self.logger.info("🔍 直接测试节点连通性...")
+            # 3.1 Directly test node connectivity (without relying on Clash)
+            self.logger.info("🔍 Directly testing node connectivity...")
             health_results = await self._test_nodes_directly()
 
             if not health_results:
-                self.logger.warning("⚠️ 健康检查未返回结果")
+                self.logger.warning("⚠️ Health check returned no results")
                 return False
 
-            # 3.2 筛选健康节点
+            # 3.2 Filter healthy nodes
             self.healthy_nodes = self._filter_healthy_nodes(health_results)
 
             healthy_count = len(self.healthy_nodes)
             total_count = len(self.all_nodes)
 
-            self.logger.info(f"✅ 健康检查完成: {healthy_count}/{total_count} 个节点健康")
+            self.logger.info(f"✅ Health check completed: {healthy_count}/{total_count} nodes healthy")
 
-            # 3.3 检查是否有足够的健康节点
+            # 3.3 Check if there are enough healthy nodes
             if healthy_count < self.min_healthy_nodes:
-                self.logger.warning(f"⚠️ 健康节点数量 ({healthy_count}) 少于最小要求 ({self.min_healthy_nodes})")
-                self.logger.info("   将降低健康标准重新筛选...")
+                self.logger.warning(f"⚠️ Healthy node count ({healthy_count}) less than minimum requirement ({self.min_healthy_nodes})")
+                self.logger.info("   Will lower health standards and re-filter...")
 
-                # 降低健康标准
+                # Lower health standards
                 self.healthy_nodes = self._filter_healthy_nodes(health_results, threshold=0.1)
                 healthy_count = len(self.healthy_nodes)
-                self.logger.info(f"   降低标准后: {healthy_count} 个节点可用")
+                self.logger.info(f"   After lowering standards: {healthy_count} nodes available")
 
             if healthy_count == 0:
-                self.logger.error("❌ 没有可用的健康节点")
+                self.logger.error("❌ No available healthy nodes")
                 return False
 
-            # 3.4 显示健康节点信息
-            self.logger.info("✅ 健康节点列表:")
+            # 3.4 Display healthy node information
+            self.logger.info("✅ Healthy node list:")
             for i, node in enumerate(self.healthy_nodes[:5], 1):
                 node_name = node.get('name', f'node_{i}')
                 node_type = node.get('type', 'unknown')
@@ -506,18 +464,18 @@ class ImprovedCompleteNewsTest:
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤3失败: {e}")
+            self.logger.error(f"❌ Step 3 failed: {e}")
             return False
 
     async def _start_clash(self) -> bool:
-        """启动Clash进程"""
+        """Start Clash process"""
         try:
             if not self.binary_path.exists():
-                self.logger.error(f"❌ 二进制文件不存在: {self.binary_path}")
+                self.logger.error(f"❌ Binary file does not exist: {self.binary_path}")
                 return False
 
             cmd = [str(self.binary_path), '-f', str(self.config_path)]
-            self.logger.info(f"启动命令: {' '.join(cmd)}")
+            self.logger.info(f"Start command: {' '.join(cmd)}")
 
             self.clash_process = subprocess.Popen(
                 cmd,
@@ -526,111 +484,111 @@ class ImprovedCompleteNewsTest:
                 creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0
             )
 
-            # 检查启动状态
+            # Check startup status
             await asyncio.sleep(3)
 
             if self.clash_process.poll() is None:
-                self.logger.info("✅ Clash启动成功")
+                self.logger.info("✅ Clash started successfully")
                 return True
             else:
                 stdout, stderr = self.clash_process.communicate()
-                self.logger.error("❌ Clash启动失败")
+                self.logger.error("❌ Clash startup failed")
                 if stdout:
-                    self.logger.error(f"标准输出: {stdout.decode('utf-8', errors='ignore')}")
+                    self.logger.error(f"Standard output: {stdout.decode('utf-8', errors='ignore')}")
                 if stderr:
-                    self.logger.error(f"错误输出: {stderr.decode('utf-8', errors='ignore')}")
+                    self.logger.error(f"Error output: {stderr.decode('utf-8', errors='ignore')}")
                 return False
 
         except Exception as e:
-            self.logger.error(f"❌ 启动Clash异常: {e}")
+            self.logger.error(f"❌ Clash startup exception: {e}")
             return False
 
     async def _perform_comprehensive_health_check(self) -> Dict[str, float]:
-        """执行全面的健康检查"""
-        self.logger.info("🔍 执行全面健康检查...")
+        """Perform comprehensive health check"""
+        self.logger.info("🔍 Performing comprehensive health check...")
 
         health_results = {}
 
         try:
-            # 获取代理列表
+            # Get proxy list
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.clash_api_base}/proxies") as response:
                     if response.status != 200:
-                        self.logger.error("❌ 无法获取代理列表")
+                        self.logger.error("❌ Unable to get proxy list")
                         return {}
 
                     data = await response.json()
                     proxies = data.get('proxies', {})
 
                     if 'PROXY' not in proxies:
-                        self.logger.error("❌ 找不到PROXY组")
+                        self.logger.error("❌ Cannot find PROXY group")
                         return {}
 
                     proxy_names = proxies['PROXY'].get('all', [])
                     actual_proxies = [p for p in proxy_names if p not in ['DIRECT']]
 
-                    self.logger.info(f"📋 找到 {len(actual_proxies)} 个代理进行健康检查")
+                    self.logger.info(f"📋 Found {len(actual_proxies)} proxies for health check")
 
-                    # 分批测试代理（避免过多并发）
+                    # Test proxies in batches (avoid too much concurrency)
                     batch_size = 5
                     for i in range(0, len(actual_proxies), batch_size):
                         batch = actual_proxies[i:i+batch_size]
-                        self.logger.info(f"🔍 测试批次 {i//batch_size + 1}: {len(batch)} 个代理")
+                        self.logger.info(f"🔍 Testing batch {i//batch_size + 1}: {len(batch)} proxies")
 
-                        # 并发测试当前批次
+                        # Concurrently test current batch
                         tasks = [self._test_single_proxy_comprehensive(proxy_name) for proxy_name in batch]
                         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                        # 处理结果
+                        # Process results
                         for proxy_name, result in zip(batch, batch_results):
                             if isinstance(result, Exception):
                                 health_results[proxy_name] = 0.0
-                                self.logger.debug(f"❌ {proxy_name}: 测试异常 ({result})")
+                                self.logger.debug(f"❌ {proxy_name}: Test exception ({result})")
                             else:
                                 health_results[proxy_name] = result
                                 if result > 0:
                                     self.logger.info(f"✅ {proxy_name}: {result:.2f}")
                                 else:
-                                    self.logger.debug(f"❌ {proxy_name}: 不可用")
+                                    self.logger.debug(f"❌ {proxy_name}: Unavailable")
 
-                        # 批次间延迟
+                        # Delay between batches
                         if i + batch_size < len(actual_proxies):
                             await asyncio.sleep(2)
 
         except Exception as e:
-            self.logger.error(f"❌ 健康检查失败: {e}")
+            self.logger.error(f"❌ Health check failed: {e}")
 
         return health_results
 
     async def _test_single_proxy_comprehensive(self, proxy_name: str) -> float:
-        """全面测试单个代理"""
+        """Comprehensively test single proxy"""
         try:
-            # 切换到指定代理
+            # Switch to specified proxy
             async with aiohttp.ClientSession() as session:
                 switch_data = {"name": proxy_name}
                 async with session.put(f"{self.clash_api_base}/proxies/PROXY", json=switch_data) as response:
                     if response.status != 204:
                         return 0.0
 
-                # 等待切换生效
+                # Wait for switch to take effect
                 await asyncio.sleep(1)
 
-                # 多重测试
+                # Multiple tests
                 test_results = []
 
-                # 测试1: 基础连通性
+                # Test 1: Basic connectivity
                 basic_score = await self._test_basic_connectivity()
                 test_results.append(basic_score)
 
-                # 测试2: HTTPS连接
+                # Test 2: HTTPS connection
                 https_score = await self._test_https_connectivity()
                 test_results.append(https_score)
 
-                # 测试3: 目标网站访问
+                # Test 3: Target website access
                 target_score = await self._test_target_website_access()
                 test_results.append(target_score)
 
-                # 计算综合分数
+                # Calculate comprehensive score
                 valid_results = [score for score in test_results if score >= 0]
                 if valid_results:
                     final_score = sum(valid_results) / len(valid_results)
@@ -639,11 +597,11 @@ class ImprovedCompleteNewsTest:
                     return 0.0
 
         except Exception as e:
-            self.logger.debug(f"代理 {proxy_name} 测试失败: {e}")
+            self.logger.debug(f"Proxy {proxy_name} test failed: {e}")
             return 0.0
 
     async def _test_basic_connectivity(self) -> float:
-        """测试基础连通性 - 使用requests库更可靠"""
+        """Test basic connectivity - using requests library for better reliability"""
         test_urls = [
             'http://httpbin.org/ip',
             'http://www.gstatic.com/generate_204'
@@ -652,7 +610,7 @@ class ImprovedCompleteNewsTest:
         success_count = 0
         for url in test_urls:
             try:
-                # 使用requests库进行测试，更稳定
+                # Use requests library for testing, more stable
                 import requests
                 proxies = {
                     'http': f'http://127.0.0.1:{self.proxy_port}',
@@ -662,17 +620,17 @@ class ImprovedCompleteNewsTest:
                 response = requests.get(url, proxies=proxies, timeout=10)
                 if response.status_code in [200, 204]:
                     success_count += 1
-                    self.logger.debug(f"✅ 基础连通性测试成功: {url}")
+                    self.logger.debug(f"✅ Basic connectivity test successful: {url}")
                 else:
-                    self.logger.debug(f"❌ 基础连通性测试失败: {url} - HTTP {response.status_code}")
+                    self.logger.debug(f"❌ Basic connectivity test failed: {url} - HTTP {response.status_code}")
             except Exception as e:
-                self.logger.debug(f"❌ 基础连通性测试异常: {url} - {e}")
+                self.logger.debug(f"❌ Basic connectivity test exception: {url} - {e}")
                 continue
 
         return success_count / len(test_urls)
 
     async def _test_https_connectivity(self) -> float:
-        """测试HTTPS连通性 - 使用requests库更可靠"""
+        """Test HTTPS connectivity - using requests library for better reliability"""
         test_urls = [
             'https://www.google.com/generate_204',
             'https://httpbin.org/ip'
@@ -681,7 +639,7 @@ class ImprovedCompleteNewsTest:
         success_count = 0
         for url in test_urls:
             try:
-                # 使用requests库进行HTTPS测试
+                # Use requests library for HTTPS testing
                 import requests
                 proxies = {
                     'http': f'http://127.0.0.1:{self.proxy_port}',
@@ -691,19 +649,19 @@ class ImprovedCompleteNewsTest:
                 response = requests.get(url, proxies=proxies, timeout=15, verify=False)
                 if response.status_code in [200, 204]:
                     success_count += 1
-                    self.logger.debug(f"✅ HTTPS连通性测试成功: {url}")
+                    self.logger.debug(f"✅ HTTPS connectivity test successful: {url}")
                 else:
-                    self.logger.debug(f"❌ HTTPS连通性测试失败: {url} - HTTP {response.status_code}")
+                    self.logger.debug(f"❌ HTTPS connectivity test failed: {url} - HTTP {response.status_code}")
             except Exception as e:
-                self.logger.debug(f"❌ HTTPS连通性测试异常: {url} - {e}")
+                self.logger.debug(f"❌ HTTPS connectivity test exception: {url} - {e}")
                 continue
 
         return success_count / len(test_urls)
 
     async def _test_target_website_access(self) -> float:
-        """测试目标网站访问 - 使用requests库更可靠"""
+        """Test target website access - using requests library for better reliability"""
         try:
-            # 使用requests库测试目标网站
+            # Use requests library to test target website
             import requests
             proxies = {
                 'http': f'http://127.0.0.1:{self.proxy_port}',
@@ -723,69 +681,68 @@ class ImprovedCompleteNewsTest:
             )
 
             if response.status_code == 200:
-                self.logger.debug("✅ 目标网站访问测试成功")
+                self.logger.debug("✅ Target website access test successful")
                 return 1.0
             elif response.status_code in [301, 302, 403]:
-                self.logger.debug(f"⚠️ 目标网站访问部分成功: HTTP {response.status_code}")
-                return 0.5  # 部分可用
+                self.logger.debug(f"⚠️ Target website access partially successful: HTTP {response.status_code}")
+                return 0.5  # Partially available
             else:
-                self.logger.debug(f"❌ 目标网站访问失败: HTTP {response.status_code}")
+                self.logger.debug(f"❌ Target website access failed: HTTP {response.status_code}")
                 return 0.0
         except Exception as e:
-            self.logger.debug(f"❌ 目标网站访问异常: {e}")
+            self.logger.debug(f"❌ Target website access exception: {e}")
             return 0.0
 
     async def _test_nodes_directly(self) -> Dict[str, float]:
-        """直接测试节点健康状况（不依赖Clash）"""
-        self.logger.info("🔍 直接测试节点连通性...")
+        """Directly test node health status (without relying on Clash)"""
+        self.logger.info("🔍 Directly testing node connectivity...")
 
         health_results = {}
 
         try:
-            # 分批测试节点（避免过多并发）
+            # Test nodes in batches (avoid too much concurrency)
             batch_size = 3
             for i in range(0, len(self.all_nodes), batch_size):
                 batch = self.all_nodes[i:i+batch_size]
-                self.logger.info(f"🔍 测试批次 {i//batch_size + 1}: {len(batch)} 个节点")
+                self.logger.info(f"🔍 Testing batch {i//batch_size + 1}: {len(batch)} nodes")
 
-                # 并发测试当前批次
+                # Concurrently test current batch
                 tasks = [self._test_single_node_directly(node) for node in batch]
                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # 处理结果
+                # Process results
                 for node, result in zip(batch, batch_results):
                     node_name = node.get('name', f'node_{i}')
                     if isinstance(result, Exception):
                         health_results[node_name] = 0.0
-                        self.logger.debug(f"❌ {node_name}: 测试异常 ({result})")
+                        self.logger.debug(f"❌ {node_name}: Test exception ({result})")
                     else:
                         health_results[node_name] = result
                         if result > 0:
                             self.logger.info(f"✅ {node_name}: {result:.2f}")
                         else:
-                            self.logger.debug(f"❌ {node_name}: 不可用")
+                            self.logger.debug(f"❌ {node_name}: Unavailable")
 
-                # 批次间延迟
+                # Delay between batches
                 if i + batch_size < len(self.all_nodes):
                     await asyncio.sleep(1)
 
         except Exception as e:
-            self.logger.error(f"❌ 直接节点测试失败: {e}")
+            self.logger.error(f"❌ Direct node test failed: {e}")
 
         return health_results
 
     async def _test_single_node_directly(self, node: Dict) -> float:
-        """直接测试单个节点（不依赖Clash）"""
+        """Directly test single node (without relying on Clash)"""
         try:
             node_name = node.get('name', 'unknown')
-            node_type = node.get('type', 'unknown')
             server = node.get('server', '')
             port = node.get('port', 0)
 
             if not server or not port:
                 return 0.0
 
-            # 简单的TCP连接测试
+            # Simple TCP connection test
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
@@ -793,20 +750,20 @@ class ImprovedCompleteNewsTest:
             try:
                 result = sock.connect_ex((server, port))
                 if result == 0:
-                    self.logger.debug(f"✅ {node_name}: TCP连接成功")
-                    return 0.8  # 基础连通性分数
+                    self.logger.debug(f"✅ {node_name}: TCP connection successful")
+                    return 0.8  # Basic connectivity score
                 else:
-                    self.logger.debug(f"❌ {node_name}: TCP连接失败")
+                    self.logger.debug(f"❌ {node_name}: TCP connection failed")
                     return 0.0
             finally:
                 sock.close()
 
         except Exception as e:
-            self.logger.debug(f"❌ {node_name}: 测试异常 - {e}")
+            self.logger.debug(f"❌ {node_name}: Test exception - {e}")
             return 0.0
 
     def _filter_healthy_nodes(self, health_results: Dict[str, float], threshold: float = 0.3) -> List[Dict]:
-        """筛选健康节点"""
+        """Filter healthy nodes"""
         healthy_nodes = []
 
         for node in self.all_nodes:
@@ -819,128 +776,128 @@ class ImprovedCompleteNewsTest:
         return healthy_nodes
 
     async def step4_create_final_config_and_start_clash(self) -> bool:
-        """步骤4: 创建最终配置（健康节点+规则）并启动Clash"""
-        self.logger.info("⚙️ 步骤4: 创建最终配置并启动Clash")
+        """Step 4: Create final configuration (healthy nodes + rules) and start Clash"""
+        self.logger.info("⚙️ Step 4: Create final configuration and start Clash")
 
         try:
-            # 4.1 生成最终配置（只包含健康节点+新闻网络规则）
+            # 4.1 Generate final configuration (only healthy nodes + news network rules)
             if self.healthy_nodes:
                 final_config = self._generate_final_config_with_rules(self.healthy_nodes)
-                self.logger.info(f"✅ 使用 {len(self.healthy_nodes)} 个健康节点生成最终配置")
+                self.logger.info(f"✅ Generated final configuration using {len(self.healthy_nodes)} healthy nodes")
             else:
-                self.logger.warning("⚠️ 没有健康节点，使用所有节点")
+                self.logger.warning("⚠️ No healthy nodes, using all nodes")
                 final_config = self._generate_final_config_with_rules(self.all_nodes)
 
-            # 4.2 保存最终配置
+            # 4.2 Save final configuration
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(final_config, f, default_flow_style=False, allow_unicode=True, indent=2)
 
-            self.logger.info(f"✅ 最终配置已保存: {self.config_path}")
-            self.logger.info(f"   包含 {len(final_config['proxies'])} 个健康节点")
-            self.logger.info(f"   新闻网络规则: panewslab.com -> PROXY")
-            self.logger.info(f"   国内网络规则: baidu.com等 -> DIRECT")
+            self.logger.info(f"✅ Final configuration saved: {self.config_path}")
+            self.logger.info(f"   Contains {len(final_config['proxies'])} healthy nodes")
+            self.logger.info(f"   News network rules: panewslab.com -> PROXY")
+            self.logger.info(f"   Domestic network rules: baidu.com etc -> DIRECT")
 
-            # 4.3 启动Clash
+            # 4.3 Start Clash
             if not await self._start_clash():
                 return False
 
-            # 4.4 等待启动完成
+            # 4.4 Wait for startup completion
             await asyncio.sleep(5)
 
-            # 4.5 验证Clash API可用
+            # 4.5 Verify Clash API availability
             if not await self._verify_clash_api():
                 return False
 
-            self.logger.info("✅ Clash启动完成，准备开始新闻爬取")
+            self.logger.info("✅ Clash startup completed, ready to begin news crawling")
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤4失败: {e}")
+            self.logger.error(f"❌ Step 4 failed: {e}")
             return False
 
     async def step5_crawler_test_with_switching(self) -> bool:
-        """步骤5: 爬虫测试和代理切换"""
-        self.logger.info("🕷️ 步骤5: 爬虫测试和代理切换")
+        """Step 5: Crawler testing and proxy switching"""
+        self.logger.info("🕷️ Step 5: Crawler testing and proxy switching")
 
         try:
-            # 5.1 第一次爬取
-            self.logger.info("📰 第一次新闻爬取...")
+            # 5.1 First crawling attempt
+            self.logger.info("📰 First news crawling...")
             ip1, news1 = await self._fetch_news_with_ip_check()
 
             if not news1:
-                self.logger.warning("⚠️ 第一次爬取失败，尝试直连模式")
-                # 尝试直连模式
+                self.logger.warning("⚠️ First crawling failed, trying direct connection mode")
+                # Try direct connection mode
                 direct_news = await self._test_direct_news_access()
                 if direct_news:
-                    self.logger.info("✅ 直连模式可以访问新闻API")
+                    self.logger.info("✅ Direct connection mode can access news API")
                 else:
-                    self.logger.error("❌ 连直连模式都无法访问新闻API")
+                    self.logger.error("❌ Even direct connection mode cannot access news API")
                 return False
 
-            self.logger.info(f"✅ 第一次爬取成功，IP: {ip1}, 新闻数: {len(news1)}")
+            self.logger.info(f"✅ First crawling successful, IP: {ip1}, news count: {len(news1)}")
 
-            # 5.2 强制切换代理
-            self.logger.info("🔄 强制切换代理...")
+            # 5.2 Force proxy switching
+            self.logger.info("🔄 Force proxy switching...")
             switch_success = await self._force_switch_proxy()
 
             if not switch_success:
-                self.logger.warning("⚠️ 代理切换失败，可能只有一个可用代理")
+                self.logger.warning("⚠️ Proxy switching failed, may only have one available proxy")
 
-            # 5.3 等待切换生效
+            # 5.3 Wait for switch to take effect
             await asyncio.sleep(3)
 
-            # 5.4 第二次爬取
-            self.logger.info("📰 第二次新闻爬取...")
+            # 5.4 Second crawling attempt
+            self.logger.info("📰 Second news crawling...")
             ip2, news2 = await self._fetch_news_with_ip_check()
 
             if not news2:
-                self.logger.warning("⚠️ 第二次爬取失败")
+                self.logger.warning("⚠️ Second crawling failed")
                 return False
 
-            self.logger.info(f"✅ 第二次爬取成功，IP: {ip2}, 新闻数: {len(news2)}")
+            self.logger.info(f"✅ Second crawling successful, IP: {ip2}, news count: {len(news2)}")
 
-            # 5.5 验证IP切换
+            # 5.5 Verify IP switching
             if ip1 != ip2:
-                self.logger.info("🎉 代理切换成功！IP已改变")
+                self.logger.info("🎉 Proxy switching successful! IP has changed")
             else:
-                self.logger.warning("⚠️ IP未改变，可能切换失败或代理相同")
+                self.logger.warning("⚠️ IP unchanged, switching may have failed or proxies are the same")
 
-            # 5.6 显示新闻内容示例
+            # 5.6 Display news content example
             if news1 and len(news1) > 0:
                 try:
                     first_news = news1[0]
-                    # 尝试不同的字段名
+                    # Try different field names
                     title = first_news.get('title') or first_news.get('Title') or first_news.get('content', 'No title')
                     if isinstance(title, str) and len(title) > 0:
-                        self.logger.info(f"📰 新闻示例: {title[:50]}...")
+                        self.logger.info(f"📰 News example: {title[:50]}...")
                     else:
-                        self.logger.info(f"📰 新闻数据结构: {list(first_news.keys()) if isinstance(first_news, dict) else type(first_news)}")
+                        self.logger.info(f"📰 News data structure: {list(first_news.keys()) if isinstance(first_news, dict) else type(first_news)}")
                 except Exception as e:
-                    self.logger.debug(f"显示新闻示例时出错: {e}")
+                    self.logger.debug(f"Error displaying news example: {e}")
 
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤5失败: {e}")
+            self.logger.error(f"❌ Step 5 failed: {e}")
             return False
 
     async def _fetch_news_with_ip_check(self) -> tuple:
-        """获取新闻并检查IP"""
+        """Fetch news and check IP"""
         try:
-            # 检查当前IP
+            # Check current IP
             current_ip = await self._get_current_ip()
 
-            # 获取新闻
+            # Fetch news
             news_data = await self._fetch_panews_data()
 
             return current_ip, news_data
 
         except Exception as e:
-            self.logger.error(f"新闻爬取失败: {e}")
+            self.logger.error(f"News crawling failed: {e}")
             return None, None
 
     async def _get_current_ip(self) -> str:
-        """获取当前IP地址"""
+        """Get current IP address"""
         try:
             proxy_url = f"http://127.0.0.1:{self.proxy_port}"
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -949,12 +906,12 @@ class ImprovedCompleteNewsTest:
                         data = await response.json()
                         return data.get('origin', 'unknown')
         except Exception as e:
-            self.logger.debug(f"获取IP失败: {e}")
+            self.logger.debug(f"Failed to get IP: {e}")
 
         return 'unknown'
 
     async def _fetch_panews_data(self) -> List[Dict]:
-        """获取PanewsLab新闻数据"""
+        """Fetch PanewsLab news data"""
         try:
             proxy_url = f"http://127.0.0.1:{self.proxy_port}"
             url = "https://www.panewslab.com/webapi/flashnews?LId=1&Rn=5&tw=0"
@@ -969,14 +926,14 @@ class ImprovedCompleteNewsTest:
                         data = await response.json()
                         return data.get('data', [])
                     else:
-                        self.logger.warning(f"新闻API返回状态: {response.status}")
+                        self.logger.warning(f"News API returned status: {response.status}")
                         return []
         except Exception as e:
-            self.logger.debug(f"获取新闻数据失败: {e}")
+            self.logger.debug(f"Failed to fetch news data: {e}")
             return []
 
     async def _test_direct_news_access(self) -> bool:
-        """测试直连访问新闻API"""
+        """Test direct access to news API"""
         try:
             url = "https://www.panewslab.com/webapi/flashnews?LId=1&Rn=3&tw=0"
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
@@ -984,19 +941,19 @@ class ImprovedCompleteNewsTest:
                     if response.status == 200:
                         data = await response.json()
                         news_count = len(data.get('data', []))
-                        self.logger.info(f"✅ 直连访问成功，获取 {news_count} 条新闻")
+                        self.logger.info(f"✅ Direct access successful, retrieved {news_count} news items")
                         return True
                     else:
-                        self.logger.warning(f"直连访问失败: {response.status}")
+                        self.logger.warning(f"Direct access failed: {response.status}")
                         return False
         except Exception as e:
-            self.logger.error(f"直连访问异常: {e}")
+            self.logger.error(f"Direct access exception: {e}")
             return False
 
     async def _force_switch_proxy(self) -> bool:
-        """强制切换代理"""
+        """Force proxy switching"""
         try:
-            # 获取可用代理列表
+            # Get available proxy list
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.clash_api_base}/proxies/PROXY") as response:
                     if response.status == 200:
@@ -1004,31 +961,31 @@ class ImprovedCompleteNewsTest:
                         current_proxy = data.get('now', '')
                         all_proxies = data.get('all', [])
 
-                        # 选择不同的代理
+                        # Select different proxy
                         available_proxies = [p for p in all_proxies if p != current_proxy and p != 'DIRECT']
 
                         if available_proxies:
                             new_proxy = available_proxies[0]
 
-                            # 切换代理
+                            # Switch proxy
                             switch_data = {"name": new_proxy}
                             async with session.put(f"{self.clash_api_base}/proxies/PROXY", json=switch_data) as switch_response:
                                 if switch_response.status == 204:
-                                    self.logger.info(f"✅ 代理切换: {current_proxy} → {new_proxy}")
+                                    self.logger.info(f"✅ Proxy switched: {current_proxy} → {new_proxy}")
                                     return True
                                 else:
-                                    self.logger.warning(f"⚠️ 代理切换失败: HTTP {switch_response.status}")
+                                    self.logger.warning(f"⚠️ Proxy switching failed: HTTP {switch_response.status}")
                         else:
-                            self.logger.warning("⚠️ 没有其他可用代理")
+                            self.logger.warning("⚠️ No other available proxies")
 
         except Exception as e:
-            self.logger.error(f"强制切换代理失败: {e}")
+            self.logger.error(f"Force proxy switching failed: {e}")
 
         return False
 
     async def step6_verify_direct_connection(self) -> bool:
-        """步骤6: 验证其他网址不走代理"""
-        self.logger.info("🌐 步骤6: 验证直连网址")
+        """Step 6: Verify other URLs don't use proxy"""
+        self.logger.info("🌐 Step 6: Verify direct connection URLs")
 
         try:
             success_count = 0
@@ -1037,135 +994,135 @@ class ImprovedCompleteNewsTest:
                 url = f"http://{domain}"
 
                 try:
-                    # 不使用代理直接访问
+                    # Direct access without using proxy
                     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                         async with session.get(url) as response:
                             if response.status in [200, 301, 302]:
-                                self.logger.info(f"✅ 直连成功: {domain}")
+                                self.logger.info(f"✅ Direct connection successful: {domain}")
                                 success_count += 1
                             else:
-                                self.logger.warning(f"⚠️ 直连状态异常: {domain} - {response.status}")
+                                self.logger.warning(f"⚠️ Direct connection status abnormal: {domain} - {response.status}")
                 except Exception as e:
-                    self.logger.debug(f"直连测试失败: {domain} - {e}")
+                    self.logger.debug(f"Direct connection test failed: {domain} - {e}")
 
-            self.logger.info(f"✅ 直连验证完成: {success_count}/{len(self.direct_urls)} 个网站可访问")
+            self.logger.info(f"✅ Direct connection verification completed: {success_count}/{len(self.direct_urls)} websites accessible")
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 步骤6失败: {e}")
+            self.logger.error(f"❌ Step 6 failed: {e}")
             return False
 
     async def _stop_clash(self):
-        """停止Clash进程"""
+        """Stop Clash process"""
         if self.clash_process:
             try:
                 self.clash_process.terminate()
                 self.clash_process.wait(timeout=5)
-                self.logger.info("✅ Clash已停止")
+                self.logger.info("✅ Clash stopped")
             except subprocess.TimeoutExpired:
                 self.clash_process.kill()
-                self.logger.info("🔪 Clash已强制停止")
+                self.logger.info("🔪 Clash force stopped")
             finally:
                 self.clash_process = None
 
     async def _verify_clash_api(self) -> bool:
-        """验证Clash API是否可用"""
+        """Verify if Clash API is available"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.clash_api_base}/proxies") as response:
                     if response.status == 200:
                         data = await response.json()
                         if 'proxies' in data and 'PROXY' in data['proxies']:
-                            self.logger.info("✅ Clash API验证成功")
+                            self.logger.info("✅ Clash API verification successful")
                             return True
                         else:
-                            self.logger.error("❌ Clash API响应格式异常")
+                            self.logger.error("❌ Clash API response format abnormal")
                             return False
                     else:
-                        self.logger.error(f"❌ Clash API不可用: HTTP {response.status}")
+                        self.logger.error(f"❌ Clash API unavailable: HTTP {response.status}")
                         return False
         except Exception as e:
-            self.logger.error(f"❌ Clash API验证失败: {e}")
+            self.logger.error(f"❌ Clash API verification failed: {e}")
             return False
 
     async def run_complete_test(self) -> bool:
-        """运行完整测试流程"""
-        self.logger.info("🎯 开始改进的完整新闻爬虫测试")
+        """Run complete test workflow"""
+        self.logger.info("🎯 Starting improved complete news crawler test")
         self.logger.info("=" * 80)
 
         try:
-            # 步骤1: 节点获取
+            # Step 1: Node fetching
             if not await self.step1_fetch_nodes():
                 return False
 
-            # 步骤2: 创建初始配置
+            # Step 2: Create initial configuration
             if not await self.step2_create_initial_config():
                 return False
 
-            # 步骤3: 测试节点健康状况（不启动Clash）
+            # Step 3: Test node health status (without starting Clash)
             if not await self.step3_test_nodes_health():
                 return False
 
-            # 步骤4: 创建最终配置并启动Clash
+            # Step 4: Create final configuration and start Clash
             if not await self.step4_create_final_config_and_start_clash():
                 return False
 
-            # 步骤5: 爬虫测试和代理切换
+            # Step 5: Crawler testing and proxy switching
             if not await self.step5_crawler_test_with_switching():
                 return False
 
-            # 步骤6: 验证直连
+            # Step 6: Verify direct connection
             if not await self.step6_verify_direct_connection():
                 return False
 
-            self.logger.info("🎉 完整测试流程成功！")
+            self.logger.info("🎉 Complete test workflow successful!")
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ 完整测试失败: {e}")
+            self.logger.error(f"❌ Complete test failed: {e}")
             return False
         finally:
-            # 清理资源
+            # Clean up resources
             await self._stop_clash()
 
     async def cleanup(self):
-        """清理资源"""
+        """Clean up resources"""
         await self._stop_clash()
 
 
 async def main():
-    """主函数"""
-    # 测试模式1: 使用custom_sources自动获取节点
-    print("🔧 测试模式1: 使用custom_sources自动获取节点")
+    """Main function"""
+    # Test mode 1: Use custom_sources to automatically fetch nodes
+    print("🔧 Test Mode 1: Use custom_sources to automatically fetch nodes")
 
     custom_sources = {
         'clash': [
-            'https://7izza.no-mad-world.club/link/iHil1Ll4I1XzfGDW?clash=3&extend=1',
+            '',
         ],
         'v2ray': []
     }
 
     tester1 = ImprovedCompleteNewsTest(
         custom_sources=custom_sources,
-        min_healthy_nodes=2  # 降低最小要求
+        min_healthy_nodes=2  # Lower minimum requirement
     )
 
     try:
         success1 = await tester1.run_complete_test()
 
         if success1:
-            print("\n✅ 模式1测试成功！")
-            print("所有功能都正常工作：")
-            print("  - 自动节点获取正常")
-            print("  - 智能路由规则生效")
-            print("  - 代理自动切换正常")
-            print("  - 新闻爬取功能正常")
-            print("  - 直连网址不走代理")
+            print("\n✅ Mode 1 test successful!")
+            print("All functions working properly:")
+            print("  - Automatic node fetching normal")
+            print("  - Smart routing rules effective")
+            print("  - Proxy auto-switching normal")
+            print("  - News crawling function normal")
+            print("  - Direct URLs don't use proxy")
         else:
-            print("\n❌ 模式1测试失败，请查看日志了解详情。")
+            print("\n❌ Mode 1 test failed, please check logs for details.")
 
     except KeyboardInterrupt:
-        print("\n⏹️ 测试被用户中断")
+        print("\n⏹️ Test interrupted by user")
     finally:
         await tester1.cleanup()
 

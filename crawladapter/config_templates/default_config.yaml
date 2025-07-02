@@ -24,17 +24,19 @@ health_check:
   max_concurrent: 10
   
   # Minimum success rate to consider proxy healthy (0.0 - 1.0)
-  min_success_rate: 0.1
-  
+  # 提高到25%，更合理的健康标准
+  min_success_rate: 0.25
+
   # Number of retry attempts for health checks
   retry_count: 3
-  
+
   # URLs used for connectivity testing
+  # 使用更可靠和多样化的测试URL
   test_urls:
     - "http://httpbin.org/ip"
     - "http://www.gstatic.com/generate_204"
-    - "https://www.google.com/generate_204"
-    - "https://ifconfig.co/json"
+    - "https://api.ipify.org"
+    - "http://icanhazip.com"
   
   # Adaptive health check intervals (seconds)
   adaptive:

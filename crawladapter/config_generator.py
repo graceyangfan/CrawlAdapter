@@ -90,11 +90,12 @@ def _get_scraping_config() -> Dict[str, Any]:
         'health_check': {
             'timeout': 15,
             'max_concurrent': 10,
-            'min_success_rate': 0.1,
+            'min_success_rate': 0.25,
             'test_urls': [
                 'http://httpbin.org/ip',
                 'http://www.gstatic.com/generate_204',
-                'https://ifconfig.co/json'
+                'https://api.ipify.org',
+                'http://icanhazip.com'
             ]
         },
         'routing': {

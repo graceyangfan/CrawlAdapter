@@ -53,12 +53,13 @@ def generate_sample_config(output_path: Optional[Path] = None) -> bool:
         'health_check': {
             'timeout': 15,
             'max_concurrent': 10,
-            'min_success_rate': 0.1,
+            'min_success_rate': 0.25,
             'retry_count': 3,
             'test_urls': [
                 'http://httpbin.org/ip',
                 'http://www.gstatic.com/generate_204',
-                'https://ifconfig.co/json'
+                'https://api.ipify.org',
+                'http://icanhazip.com'
             ],
             'adaptive': {
                 'base_interval': 300,
